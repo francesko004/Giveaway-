@@ -267,7 +267,8 @@ describe("database-level immutability", () => {
     await expect(prisma.draw.update({ where: { id: d.id }, data: { status: "COMMITTED" } })).rejects.toThrow(/GV_IMMUTABLE/);
     await expect(
       prisma.draw.create({
-        data: { ...((({ id, results, ...rest }) => rest)(await prisma.draw.findUniqueOrThrow({ where: { id: d.id }, include: { results: true } })) as never), campaignId: c.id, sequence: 9, supersedesId: null },
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        data: { ...((({ id, results, ...rest }) => rest)(await prisma.draw.findUniqueOrThrow({ where: { id: d.id }, include: { results: true } })) as Record<string, unknown>), campaignId: c.id, sequence: 9, supersedesId: null } as never,
       }),
     ).rejects.toThrow(/GV_IMMUTABLE/);
   });
