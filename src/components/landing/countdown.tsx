@@ -67,9 +67,10 @@ export function Countdown({ target, serverNow, mode = "closes", className }: { t
       <p className="mb-2.5 text-xs font-semibold tracking-wider text-ink-muted uppercase">{mode === "closes" ? t("countdown.title") : t("countdown.startsIn")}</p>
       <div className="grid grid-cols-4 gap-2 sm:gap-3" role="timer" aria-live="off" aria-atomic="true">
         {units.map((u) => (
-          <div key={u.label} className="rounded-xl border bg-white px-1 py-3 text-center shadow-card">
-            <div className="text-2xl font-bold text-navy tabular-nums sm:text-3xl" suppressHydrationWarning>
-              {String(u.value).padStart(2, "0")}
+          <div key={u.label} className="relative overflow-hidden rounded-xl border bg-white px-1 py-3 text-center shadow-card">
+            <div aria-hidden className="absolute inset-x-0 top-1/2 h-px bg-line/70" />
+            <div className="relative h-8 overflow-hidden text-2xl font-bold text-navy tabular-nums sm:h-9 sm:text-3xl" suppressHydrationWarning>
+              <span key={u.value} className="block motion-safe:animate-digit">{String(u.value).padStart(2, "0")}</span>
             </div>
             <div className="mt-0.5 text-[11px] font-medium tracking-wide text-ink-muted uppercase">{u.label}</div>
           </div>

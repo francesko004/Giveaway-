@@ -11,6 +11,7 @@ import { SiteHeader } from "@/components/landing/site-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrowserVerifier, CheckList, EntryChecker } from "@/components/verify/browser-verifier";
+import { RevealGroup, ScrambleText } from "@/components/verify/winner-reveal";
 import type { Campaign } from "@/generated/prisma/client";
 
 type Props = { params: Promise<{ campaignId: string }> };
@@ -87,14 +88,15 @@ export default async function VerifyCampaignPage({ params }: Props) {
                 {draw.status === "COMPLETED" && (
                   <Card className="border-brand/30 bg-brand-soft/40">
                     <CardHeader><CardTitle className="flex items-center gap-2"><Trophy className="size-5 text-brand" /> {v.result}</CardTitle></CardHeader>
-                    <CardContent className="space-y-2">
+                    <CardContent>
+                      <RevealGroup>
                       {results.map((r) => {
                         const isCurrent = winners.some((w) => w.position === r.position);
                         return (
                           <div key={r.position} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-white px-4 py-3 ${r.disqualifiedAt ? "opacity-60" : ""}`}>
                             <div className="flex items-center gap-3">
                               <span className="text-xs font-semibold text-ink-muted">#{r.position + 1}</span>
-                              <span className="font-mono text-base font-bold text-navy" data-testid={r.role === "WINNER" ? "winner-reference" : undefined}>{r.referenceNumber}</span>
+                              <ScrambleText text={r.referenceNumber} delay={r.position * 450} className="font-mono text-base font-bold text-navy" testId={r.role === "WINNER" ? "winner-reference" : undefined} />
                             </div>
                             <div className="flex items-center gap-2">
                               {r.disqualifiedAt ? (
@@ -109,6 +111,7 @@ export default async function VerifyCampaignPage({ params }: Props) {
                           </div>
                         );
                       })}
+                      </RevealGroup>
                     </CardContent>
                   </Card>
                 )}

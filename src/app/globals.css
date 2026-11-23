@@ -88,6 +88,44 @@
   }
 }
 
+@keyframes gv-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(-0.6deg); }
+}
+@keyframes gv-shine {
+  0% { transform: translateX(-120%) skewX(-18deg); }
+  60%, 100% { transform: translateX(260%) skewX(-18deg); }
+}
+@keyframes gv-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes gv-digit {
+  0% { transform: translateY(-45%); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@utility animate-float { animation: gv-float 6s ease-in-out infinite; }
+@utility animate-pop { animation: gv-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+@utility animate-digit { animation: gv-digit 0.35s ease-out both; }
+
+/* Moving highlight used on the hero CTA and the ticket */
+.gv-shine { position: relative; overflow: hidden; isolation: isolate; }
+.gv-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  animation: gv-shine 3.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gv-shine::after { display: none; }
+}
+
 @utility container-page {
   width: 100%;
   margin-inline: auto;

@@ -19,14 +19,17 @@ import {
 } from "lucide-react";
 import type { Campaign, SiteSettings } from "@/generated/prisma/client";
 import type { Dictionary, Locale } from "@/lib/i18n/dictionaries";
-import { formatDateTime } from "@/lib/time";
+import { formatDateTime, startOfDayInZone } from "@/lib/time";
 import { appUrl, env, turnstileEnabled } from "@/lib/env";
 import { issueFormToken } from "@/lib/security/form-token";
 import { effectiveStatus } from "@/services/campaign-status";
 import { campaignSettings, countEligible, localizeCampaign } from "@/services/campaigns";
+import { prisma } from "@/lib/db";
+import type { SocialLinks } from "@/services/settings";
 import { recordLandingVisit } from "@/services/qr";
 import { Badge } from "@/components/ui/badge";
 import { Countdown } from "./countdown";
+import { CampaignProgress, LiveCounter, StickyCta } from "./engagement";
 import { RegistrationForm } from "./registration-form";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -65,6 +68,12 @@ export async function CampaignLanding({
 
   await recordLandingVisit(campaign.id, src, await headers());
   const participantCount = campaign.showParticipantCount ? await countEligible(campaign.id) : null;
+  const todayCount =
+    participantCount !== null
+      ? await prisma.participant.count({ where: { campaignId: campaign.id, status: { not: "INVALID" }, registeredAt: { gte: startOfDayInZone(now, tz) } } })
+      : 0;
+  const social = (settings.socialLinks ?? {}) as SocialLinks;
+  const socialUrl = social.instagram || social.facebook || social.tiktok || undefined;
   const image = campaign.prizeImage || "/images/prize-placeholder.webp";
 
   const statusVariant = { ACTIVE: "success", SCHEDULED: "default", PAUSED: "warning", CLOSED: "neutral", DRAW_COMPLETED: "navy", DRAFT: "neutral" } as const;
@@ -88,7 +97,7 @@ export async function CampaignLanding({
               <p className="max-w-xl text-base leading-relaxed text-pretty text-ink-muted sm:text-lg">{content.description}</p>
             </div>
 
-            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border bg-white shadow-elevated">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border bg-white shadow-elevated motion-safe:animate-float">
               <Image src={image} alt={content.prizeName} fill priority sizes="(max-width: 1024px) 100vw, 560px" className="object-cover" />
               {campaign.prizeValue && (
                 <div className="absolute bottom-3 left-3 rounded-lg bg-white/95 px-3 py-1.5 text-sm font-semibold text-navy shadow-card backdrop-blur">
@@ -98,6 +107,10 @@ export async function CampaignLanding({
             </div>
 
             {status === "ACTIVE" && <Countdown target={campaign.endsAt.toISOString()} serverNow={now.getTime()} mode="closes" />}
+            {status === "ACTIVE" && <CampaignProgress start={campaign.startsAt.toISOString()} end={campaign.endsAt.toISOString()} serverNow={now.getTime()} />}
+            {participantCount !== null && (status === "ACTIVE" || status === "SCHEDULED") && (
+              <LiveCounter slug={campaign.slug} initial={participantCount} initialToday={todayCount} />
+            )}
             {status === "SCHEDULED" && <Countdown target={campaign.startsAt.toISOString()} serverNow={now.getTime()} mode="opens" />}
 
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-ink-muted">
@@ -106,7 +119,7 @@ export async function CampaignLanding({
                 {status === "SCHEDULED" ? dict.hero.startsOn : status === "ACTIVE" || status === "PAUSED" ? dict.hero.closesOn : dict.hero.closedOn}{" "}
                 <strong className="font-semibold text-ink">{fmt(status === "SCHEDULED" ? campaign.startsAt : campaign.closedAt ?? campaign.endsAt)}</strong>
               </span>
-              {participantCount !== null && (
+              {participantCount !== null && status !== "ACTIVE" && status !== "SCHEDULED" && (
                 <span className="flex items-center gap-1.5">
                   <Users className="size-4 text-brand" />
                   <strong className="font-semibold text-ink">{participantCount.toLocaleString(locale === "sq" ? "sq-AL" : "en-GB")}</strong> {dict.hero.participants}
@@ -120,10 +133,6 @@ export async function CampaignLanding({
             <div className="rounded-2xl border bg-white p-5 shadow-elevated sm:p-7">
               {status === "ACTIVE" ? (
                 <>
-                  <div className="mb-5">
-                    <h2 className="text-xl font-bold text-navy">{dict.form.title}</h2>
-                    <p className="mt-1 text-sm text-ink-muted">{dict.form.subtitle}</p>
-                  </div>
                   <RegistrationForm
                     campaignSlug={campaign.slug}
                     campaignTitle={content.title}
@@ -136,6 +145,10 @@ export async function CampaignLanding({
                     turnstileSiteKey={turnstileEnabled() ? env().NEXT_PUBLIC_TURNSTILE_SITE_KEY : undefined}
                     nonce={nonce}
                     shareUrl={appUrl(`/giveaway/${campaign.slug}`)}
+                    drawAt={campaign.drawAt.toISOString()}
+                    drawLabel={fmt(campaign.drawAt)}
+                    companyName={settings.companyName}
+                    socialUrl={socialUrl}
                   />
                 </>
               ) : (
@@ -156,10 +169,10 @@ export async function CampaignLanding({
               { icon: ClipboardList, ...dict.how.s2 },
               { icon: Trophy, ...dict.how.s3 },
             ].map((s, i) => (
-              <li key={s.t} className="relative rounded-2xl border bg-white p-6 shadow-card">
+              <li key={s.t} className="group relative rounded-2xl border bg-white p-6 shadow-card transition duration-300 hover:-translate-y-1 hover:border-brand/30 hover:shadow-elevated">
                 <div className="mb-4 flex items-center gap-3">
-                  <span className="flex size-11 items-center justify-center rounded-xl bg-brand-soft text-brand"><s.icon className="size-5" /></span>
-                  <span className="text-sm font-bold text-brand/60">0{i + 1}</span>
+                  <span className="flex size-11 items-center justify-center rounded-xl bg-brand-soft text-brand transition group-hover:scale-110 group-hover:bg-brand group-hover:text-white"><s.icon className="size-5" /></span>
+                  <span className="rounded-full bg-surface-muted px-2.5 py-0.5 text-xs font-bold tracking-wide text-brand">0{i + 1}</span>
                 </div>
                 <h3 className="font-semibold text-navy">{s.t}</h3>
                 <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">{s.d}</p>
@@ -215,6 +228,8 @@ export async function CampaignLanding({
           )}
         </div>
       </section>
+
+      {status === "ACTIVE" && <StickyCta end={campaign.endsAt.toISOString()} serverNow={now.getTime()} />}
 
       {/* FAIRNESS */}
       <section id="fairness" className="scroll-mt-16 bg-navy py-14 text-white sm:py-20">
