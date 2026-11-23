@@ -1,6 +1,6 @@
 # MegaLLuksi — QR Giveaway Platform
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/francesko004/Giveaway-)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/francesko004/Giveaway-/tree/ccr-2625667a-6hgh7j)
 
 **[megalluksi.win](https://megalluksi.win)** — a production-ready, **free-entry** giveaway platform: people scan a QR code, register in under a minute on their phone, and the winner is chosen by a **publicly verifiable** commit-and-reveal draw using the [drand](https://drand.love) randomness beacon.
 
@@ -46,7 +46,7 @@ Any PostgreSQL ≥ 14 reachable from the internet works (Supabase, your own serv
 
 ### 2. Click the button
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/francesko004/Giveaway-)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/francesko004/Giveaway-/tree/ccr-2625667a-6hgh7j)
 
 Cloudflare copies this repository into your GitHub account, builds it and deploys it. On the setup page it asks for three secrets:
 
@@ -58,6 +58,8 @@ Cloudflare copies this repository into your GitHub account, builds it and deploy
 
 Leave the build command (`npm run build`) and deploy command (`npm run deploy`) as suggested. The first build takes about 3–5 minutes.
 
+> **Already deployed once?** Clicking the button again creates a *second* copy and Worker. To update the one you have, see [Updates](#updates) below.
+
 ### 3. Create your admin account
 
 Open **`https://<worker-name>.<your-subdomain>.workers.dev/setup`** (the address is shown at the end of the deployment), enter the `SETUP_TOKEN`, your name, e-mail and password. Setup creates the database tables, the MegaLLuksi branding and — if you leave the box ticked — a sample campaign with 4 QR codes. Then sign in at **`/admin`**. The setup page disables itself once an admin exists.
@@ -65,7 +67,7 @@ Open **`https://<worker-name>.<your-subdomain>.workers.dev/setup`** (the address
 ### 4. Connect megalluksi.win
 
 1. Add `megalluksi.win` to your Cloudflare account (**Add a domain**, then change the nameservers at your registrar).
-2. **Workers & Pages → megalluksi → Settings → Domains & Routes → Add → Custom domain →** `megalluksi.win` (and optionally `www.megalluksi.win`).
+2. **Workers & Pages → your Worker (default name `megalluksi`) → Settings → Domains & Routes → Add → Custom domain →** `megalluksi.win` (and optionally `www.megalluksi.win`).
 3. QR codes, e-mails and share links use `APP_URL`, which is already `https://megalluksi.win` (change it under **Settings → Variables and Secrets** if you use another domain).
 
 Print QR codes only **after** the domain works — they encode `https://megalluksi.win/q/…`.
@@ -82,7 +84,17 @@ Secrets and variables are edited under **Workers & Pages → megalluksi → Sett
 
 ### Updates
 
-Every push to the `main`/default branch of your copied repository is built and deployed automatically (Workers Builds). Database migrations are applied by the app itself within a minute (the Cron Trigger runs every minute), so no command-line step is needed.
+The button deploys from a **copy** of this repository in your GitHub account, so later fixes made here do not reach your Worker by themselves. Pick one:
+
+- **Build straight from this repository (simplest):** **Workers & Pages → your Worker → Settings → Build → Git repository** → disconnect the copy, connect `francesko004/Giveaway-` (branch `ccr-2625667a-6hgh7j`), keep `npm run build` / `npm run deploy`, then **Deployments → Retry deployment**. From then on every push here redeploys automatically.
+- **Keep your copy:** the button's copy is a plain repository (not a fork), so pull the changes in with git and push — the push triggers a new build:
+  ```bash
+  git clone https://github.com/<you>/<your-copy> && cd <your-copy>
+  git pull --no-rebase --allow-unrelated-histories https://github.com/francesko004/Giveaway- ccr-2625667a-6hgh7j
+  git push
+  ```
+
+Your secrets and variables are kept across rebuilds. Database migrations are applied by the app itself within a minute (the Cron Trigger runs every minute), so no command-line step is needed.
 
 ### Free plan vs. Workers Paid — please read
 
@@ -91,7 +103,7 @@ Cloudflare's **Free** plan allows **10 ms of CPU time per request** (and per cro
 | Operation | CPU time | Free plan (10 ms) |
 |---|---|---|
 | Public pages, registration, QR redirects, verification page | usually a few ms; heavier pages can exceed 10 ms | mostly fine, occasional `Error 1102` possible |
-| **Admin login / creating users** (secure PBKDF2-SHA256 password hashing, 600 000 iterations) | ~110 ms | ❌ will fail |
+| **Admin login / creating users** (secure chained PBKDF2-SHA256 password hashing, 600 000 iterations in rounds of 100 000 — the most Workers allows per call) | ~110 ms | ❌ will fail |
 | **Draw reveal** (BLS signature verification of the drand beacon) | ~25–40 ms | ❌ will fail (the draw stays pending and is retried) |
 
 So on the Free plan the public site can work, but **admin sign-in and the draw need the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) (US $5/month)**, which allows up to 30 s CPU per request. No code or configuration change is needed when you upgrade. Weakening the password hashing or skipping signature verification to fit into 10 ms would undermine the platform's security and fairness guarantees, so this is intentionally not done. If you prefer a fixed-price server instead, use the Docker deployment below (any €4–5/month VPS).
