@@ -5,6 +5,7 @@ import { adminNotificationAddress, sendEmail } from "@/lib/email";
 import { campaignClosed, drawResult } from "@/lib/email/templates";
 import { syncCampaignStatuses } from "./campaigns";
 import { executeDueDraws } from "./draws";
+import { anonymizeParticipant } from "./participants";
 import { getSettings } from "./settings";
 
 /**
@@ -38,7 +39,24 @@ export async function runTick(now = new Date()) {
     }
   }
 
+  await enforceRetention(settings.retentionDays, now);
+
   await prisma.session.deleteMany({ where: { expiresAt: { lt: now } } });
   await prisma.rateLimit.deleteMany({ where: { windowStart: { lt: new Date(now.getTime() - 86_400_000) } } });
   return { closed, draws };
+}
+
+/**
+ * Data retention: personal data of entries in campaigns that ended more than `retentionDays` ago is
+ * anonymised (references and draw proofs are kept). Batched to keep each tick short.
+ */
+export async function enforceRetention(retentionDays: number, now = new Date(), batch = 200) {
+  const cutoff = new Date(now.getTime() - retentionDays * 86_400_000);
+  const due = await prisma.participant.findMany({
+    where: { anonymizedAt: null, campaign: { status: { in: ["CLOSED", "DRAW_COMPLETED"] }, endsAt: { lt: cutoff } } },
+    select: { id: true },
+    take: batch,
+  });
+  for (const p of due) await anonymizeParticipant(p.id, `Retention period of ${retentionDays} days expired`, null);
+  return due.length;
 }

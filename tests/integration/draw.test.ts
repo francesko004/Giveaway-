@@ -283,3 +283,20 @@ describe("database-level immutability", () => {
     expect(await verifyAuditChain()).toMatchObject({ ok: false, brokenAt: 1 });
   });
 });
+
+describe("data retention", () => {
+  beforeEach(resetDb);
+  it("anonymises entries of campaigns past the retention period, keeping references", async () => {
+    const { enforceRetention } = await import("@/services/scheduler");
+    const old = await makeCampaign({ status: "CLOSED", startsAt: new Date("2024-01-01"), endsAt: new Date("2024-02-01"), drawAt: new Date("2024-02-02") });
+    const recent = await makeCampaign();
+    const oldPeople = await seedParticipants(old.id, 3, "OLD");
+    await seedParticipants(recent.id, 2, "NEW");
+    expect(await enforceRetention(365, new Date("2026-01-01"))).toBe(3);
+    const p = await prisma.participant.findUniqueOrThrow({ where: { referenceNumber: oldPeople[0].referenceNumber } });
+    expect(p.anonymizedAt).not.toBeNull();
+    expect(p.phone).toBeNull();
+    expect(p.fullName).not.toContain("Participant");
+    expect(await prisma.participant.count({ where: { campaignId: recent.id, anonymizedAt: null } })).toBe(2);
+  });
+});

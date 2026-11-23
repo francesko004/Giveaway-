@@ -26,6 +26,8 @@ type HeaderSource = Headers | { get(name: string): string | null };
 export interface RegistrationResult {
   referenceNumber: string;
   registeredAt: string;
+  /** Pre-formatted in the visitor's language and the configured timezone */
+  registeredAtLabel: string;
   campaignTitle: string;
   campaignSlug: string;
 }
@@ -174,6 +176,7 @@ export async function registerParticipant(body: unknown, headers: HeaderSource, 
       return {
         referenceNumber: participant.referenceNumber,
         registeredAt: participant.registeredAt.toISOString(),
+        registeredAtLabel: formatDateTime(participant.registeredAt, input.locale, settings.timezone, { dateStyle: "long", timeStyle: "medium" }),
         campaignTitle: localized.title,
         campaignSlug: campaign.slug,
       };

@@ -30,6 +30,7 @@ interface Props {
 interface Success {
   referenceNumber: string;
   registeredAt: string;
+  registeredAtLabel?: string;
   campaignTitle: string;
 }
 
@@ -259,7 +260,7 @@ function ConsentRow({ id, name, control, error, muted, children }: { id: string;
 function SuccessCard({ success, timezone, shareUrl }: { success: Success; timezone: string; shareUrl: string }) {
   const { t, locale } = useI18n();
   const [copied, setCopied] = useState<string | null>(null);
-  const when = new Intl.DateTimeFormat(locale === "sq" ? "sq-AL" : "en-GB", { dateStyle: "long", timeStyle: "medium", timeZone: timezone }).format(new Date(success.registeredAt));
+  const when = success.registeredAtLabel ?? new Intl.DateTimeFormat(locale === "sq" ? "sq-AL" : "en-GB", { dateStyle: "long", timeStyle: "medium", timeZone: timezone }).format(new Date(success.registeredAt));
 
   const copy = async (text: string, label: string) => {
     try {
