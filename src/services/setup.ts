@@ -8,6 +8,7 @@ import { safeEqual } from "@/lib/security/crypto";
 import { applyMigrations, pendingMigrations } from "@/lib/migrations/migrate";
 import { DEFAULT_PRIVACY, DEFAULT_TERMS } from "@/content/legal";
 import { brandedSettings, demoCampaign, DEMO_QR_SOURCES } from "@/content/demo";
+import { describeDatabaseUrl, type DbTarget } from "@/lib/db-diagnostics";
 import { writeAudit } from "./audit";
 
 export interface SetupStatus {
@@ -16,6 +17,8 @@ export interface SetupStatus {
   pendingMigrations: string[];
   hasAdmin: boolean;
   setupTokenConfigured: boolean;
+  /** Host/port/database being used (never credentials) plus a hint for common mistakes. */
+  target: DbTarget | null;
   error?: string;
 }
 
@@ -28,6 +31,7 @@ export async function setupStatus(): Promise<SetupStatus> {
     pendingMigrations: [],
     hasAdmin: false,
     setupTokenConfigured: !!env().SETUP_TOKEN,
+    target: describeDatabaseUrl(url),
   };
   if (!url) return status;
   try {

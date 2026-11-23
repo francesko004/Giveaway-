@@ -39,6 +39,12 @@ export default async function SetupPage() {
           <ol className="space-y-4">
             <Step ok={s.databaseConfigured} icon={Database} title="Database connection">
               {s.databaseConfigured ? (s.databaseReachable ? "Connected." : <>Configured but not reachable{s.error ? `: ${s.error}` : ""}. Check the <code>DATABASE_URL</code> secret.</>) : <>Add the <code>DATABASE_URL</code> secret (PostgreSQL connection string) to the Worker.</>}
+              {s.target && (
+                <span className="mt-1 block font-mono text-xs">
+                  {s.target.host}:{s.target.port}/{s.target.database}
+                </span>
+              )}
+              {s.target?.hint && !s.databaseReachable && <span className="mt-1 block font-medium text-warning">{s.target.hint}</span>}
             </Step>
             <Step ok={s.databaseReachable && s.pendingMigrations.length === 0} icon={Database} title="Database tables">
               {s.pendingMigrations.length ? `${s.pendingMigrations.length} migration(s) will be applied when you submit the form below.` : s.databaseReachable ? "Up to date." : null}
