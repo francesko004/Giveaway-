@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import type { Role } from "@/generated/prisma/client";
+import type { Role } from "@prisma/client";
 import { AppError, isAppError, isIntegrityGuardError } from "@/lib/errors";
 import { hasRole, sessionFromRequest, type SessionUser } from "@/lib/auth/session";
 import { ipHash, isSameOrigin } from "@/lib/security/request";

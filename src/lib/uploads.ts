@@ -1,52 +1,37 @@
 import "server-only";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import sharp from "sharp";
-import { env } from "@/lib/env";
+import { prisma } from "@/lib/db";
 import { AppError } from "@/lib/errors";
+import { IMAGE_MIME, sanitizeImage } from "@/lib/image";
 import { randomToken } from "@/lib/security/crypto";
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-const ACCEPTED = new Set(["jpeg", "png", "webp", "avif"]);
-const NAME_RE = /^[A-Za-z0-9_-]{16,64}\.webp$/;
-
-function uploadDir() {
-  return path.resolve(env().UPLOAD_DIR);
-}
+const NAME_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
 /**
- * Secure image upload: the content is decoded by sharp (the declared MIME type and file name are
- * ignored), must be a real raster image of an accepted format, and is RE-ENCODED to WebP. This strips
- * EXIF/GPS metadata and neutralises polyglot files. Files get random names outside the web root.
+ * Secure image upload: the real format is detected from the bytes (declared type/name are ignored),
+ * only JPEG/PNG/WebP are accepted, EXIF/GPS/XMP/text metadata is stripped, and the file gets a random
+ * name. Files are stored in the database (no file system or object storage needed). The admin UI also
+ * resizes and re-encodes images in the browser before uploading, so stored files are small.
  */
-export async function saveImage(data: ArrayBuffer): Promise<string> {
+export async function saveImage(data: ArrayBuffer, userId?: string): Promise<string> {
   if (data.byteLength === 0) throw new AppError("EMPTY", "The file is empty", 422);
   if (data.byteLength > MAX_UPLOAD_BYTES) throw new AppError("TOO_LARGE", "Images must be 5 MB or smaller", 413);
-  let meta;
+  let clean;
   try {
-    meta = await sharp(Buffer.from(data), { limitInputPixels: 40_000_000 }).metadata();
+    clean = sanitizeImage(new Uint8Array(data));
   } catch {
-    throw new AppError("INVALID_IMAGE", "The file is not a valid image", 422);
+    throw new AppError("INVALID_IMAGE", "Use a valid JPEG, PNG or WebP image", 422);
   }
-  if (!meta.format || !ACCEPTED.has(meta.format)) throw new AppError("INVALID_IMAGE", "Use a JPEG, PNG, WebP or AVIF image", 422);
-  const output = await sharp(Buffer.from(data), { limitInputPixels: 40_000_000 })
-    .rotate()
-    .resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true })
-    .webp({ quality: 84 })
-    .toBuffer();
-  const name = `${randomToken(18)}.webp`;
-  await mkdir(uploadDir(), { recursive: true });
-  await writeFile(path.join(uploadDir(), name), output, { mode: 0o640 });
-  return `/api/uploads/${name}`;
+  const id = randomToken(18);
+  await prisma.upload.create({
+    data: { id, contentType: IMAGE_MIME[clean.format], size: clean.data.length, data: clean.data as Uint8Array<ArrayBuffer>, createdById: userId ?? null },
+  });
+  return `/api/uploads/${id}`;
 }
 
-export async function readUpload(name: string): Promise<Buffer | null> {
-  if (!NAME_RE.test(name)) return null;
-  const full = path.join(uploadDir(), name);
-  if (path.dirname(full) !== uploadDir()) return null;
-  try {
-    return await readFile(full);
-  } catch {
-    return null;
-  }
+export async function readUpload(name: string): Promise<{ data: Uint8Array; contentType: string } | null> {
+  const id = name.replace(/\.(webp|png|jpe?g)$/i, "");
+  if (!NAME_RE.test(id)) return null;
+  const row = await prisma.upload.findUnique({ where: { id }, select: { data: true, contentType: true } });
+  return row ? { data: row.data, contentType: row.contentType } : null;
 }

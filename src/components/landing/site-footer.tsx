@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Mail, MapPin, Phone } from "lucide-react";
-import type { SiteSettings } from "@/generated/prisma/client";
+import type { SiteSettings } from "@prisma/client";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { SocialLinks } from "@/services/settings";
 import { BrandMark } from "./site-header";

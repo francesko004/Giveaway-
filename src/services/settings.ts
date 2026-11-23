@@ -2,7 +2,8 @@ import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { DEFAULT_PRIVACY, DEFAULT_TERMS } from "@/content/legal";
-import type { SiteSettings } from "@/generated/prisma/client";
+import { brandedSettings } from "@/content/demo";
+import type { SiteSettings } from "@prisma/client";
 
 export type Locale = "sq" | "en";
 
@@ -10,7 +11,11 @@ export type Locale = "sq" | "en";
 export const getSettings = cache(async (): Promise<SiteSettings> => {
   const existing = await prisma.siteSettings.findUnique({ where: { id: 1 } });
   if (existing) return existing;
-  return prisma.siteSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1, termsContent: DEFAULT_TERMS, privacyContent: DEFAULT_PRIVACY } });
+  return prisma.siteSettings.upsert({
+    where: { id: 1 },
+    update: {},
+    create: { id: 1, ...brandedSettings(), termsContent: DEFAULT_TERMS, privacyContent: DEFAULT_PRIVACY },
+  });
 });
 
 export function fillTemplate(template: string, settings: SiteSettings): string {

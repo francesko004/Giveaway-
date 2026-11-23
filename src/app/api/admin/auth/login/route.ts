@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { handleError, jsonError, readJson } from "@/lib/api";
-import { getDummyHash, verifyPassword } from "@/lib/auth/password";
+import { getDummyHash, hashPassword, needsRehash, verifyPassword } from "@/lib/auth/password";
 import { createSession, sessionCookieName, sessionCookieOptions } from "@/lib/auth/session";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { ipHash, isSameOrigin } from "@/lib/security/request";
@@ -49,7 +49,11 @@ export async function POST(request: Request) {
     const settings = await getSettings();
     const { token, expiresAt } = await createSession(user.id, { ipHash: ip, userAgent: request.headers.get("user-agent") }, settings.sessionTtlHours);
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() } });
+      await tx.user.update({
+        where: { id: user.id },
+        // Transparently upgrade legacy (Argon2id) or weaker hashes to the current scheme.
+        data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date(), ...(needsRehash(user.passwordHash) ? { passwordHash: await hashPassword(password) } : {}) },
+      });
       await writeAudit(tx, { userId: user.id, action: "auth.login", entityType: "User", entityId: user.id, ipHash: ip });
     });
     const res = NextResponse.json({ ok: true, data: { name: user.name, role: user.role } }, { headers: { "cache-control": "no-store" } });

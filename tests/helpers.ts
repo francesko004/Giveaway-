@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { issueFormToken } from "@/lib/security/form-token";
-import type { Role } from "@/generated/prisma/client";
+import type { Role } from "@prisma/client";
 import type { SessionUser } from "@/lib/auth/session";
 
 export { prisma };
@@ -10,7 +10,7 @@ export async function resetDb() {
   // TRUNCATE bypasses the row-level append-only triggers — only ever used against the test database.
   if (!process.env.DATABASE_URL?.includes("test")) throw new Error("Refusing to reset a non-test database");
   await prisma.$executeRawUnsafe(
-    `TRUNCATE "DrawResult","Draw","ConsentRecord","Participant","PageVisit","QRSource","AuditLog","Session","RateLimit","DataRequest","Campaign","User","SiteSettings" RESTART IDENTITY CASCADE`,
+    `TRUNCATE "DrawResult","Draw","ConsentRecord","Participant","PageVisit","QRSource","AuditLog","Session","RateLimit","DataRequest","Upload","Campaign","User","SiteSettings" RESTART IDENTITY CASCADE`,
   );
   await prisma.siteSettings.create({ data: { id: 1, minFormFillSeconds: 0, registrationsPerIpPerHour: 1000, sendConfirmationEmail: false } });
 }

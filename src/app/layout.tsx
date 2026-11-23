@@ -3,14 +3,15 @@ import "@fontsource-variable/inter";
 import "./globals.css";
 import { getLocale } from "@/lib/i18n/server";
 import { getSettings } from "@/services/settings";
+import { BRAND } from "@/content/brand";
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings().catch(() => null);
-  const name = settings?.companyName ?? "Giveaway";
+  const name = settings?.companyName ?? BRAND.name;
   return {
-    metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
+    metadataBase: new URL(process.env.APP_URL ?? BRAND.url),
     title: { default: name, template: `%s · ${name}` },
-    description: "Free-entry giveaway with publicly verifiable winner selection.",
+    description: `${BRAND.name} — konkurse me pjesëmarrje falas dhe short të verifikueshëm publikisht. Free-entry giveaways with a publicly verifiable draw.`,
     applicationName: name,
     formatDetection: { telephone: false },
   };

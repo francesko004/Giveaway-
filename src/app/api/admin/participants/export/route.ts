@@ -1,8 +1,9 @@
-import ExcelJS from "exceljs";
 import { prisma } from "@/lib/db";
 import { adminRoute } from "@/lib/api";
 import { parseParticipantFilters } from "@/lib/admin-filters";
 import { toCsv } from "@/lib/csv";
+import { toXlsx } from "@/lib/xlsx";
+import { writeAudit } from "@/services/audit";
 import { EXPORT_HEADERS, exportParticipantRows } from "@/services/participants";
 import { getSettings } from "@/services/settings";
 
@@ -16,7 +17,6 @@ export const GET = adminRoute("ADMIN", async (req, { user, ipHash }) => {
   const format = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
 
   await prisma.$transaction(async (tx) => {
-    const { writeAudit } = await import("@/services/audit");
     await writeAudit(tx, {
       userId: user.id,
       campaignId: filters.campaignId ?? null,
@@ -33,15 +33,8 @@ export const GET = adminRoute("ADMIN", async (req, { user, ipHash }) => {
       headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="participants-${stamp}.csv"`, "cache-control": "no-store" },
     });
   }
-  const wb = new ExcelJS.Workbook();
-  wb.creator = settings.companyName;
-  const ws = wb.addWorksheet("Participants");
-  ws.addRow(EXPORT_HEADERS).font = { bold: true };
-  for (const r of rows) ws.addRow(r.map((v) => (typeof v === "string" && /^[=+\-@\t\r]/.test(v) ? `'${v}` : v)));
-  ws.columns.forEach((c) => (c.width = 20));
-  ws.views = [{ state: "frozen", ySplit: 1 }];
-  const buffer = await wb.xlsx.writeBuffer();
-  return new Response(new Uint8Array(buffer as ArrayBuffer), {
+  const xlsx = toXlsx("Participants", EXPORT_HEADERS, rows);
+  return new Response(xlsx as Uint8Array<ArrayBuffer>, {
     headers: {
       "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "content-disposition": `attachment; filename="participants-${stamp}.xlsx"`,

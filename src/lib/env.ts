@@ -8,7 +8,8 @@ const boolish = z
 
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  DATABASE_URL: z.string().url().or(z.string().startsWith("postgresql://")),
+  /** Optional on Cloudflare Workers when a HYPERDRIVE binding provides the connection. */
+  DATABASE_URL: z.string().optional(),
   /** Public base URL, e.g. https://giveaway.example.al — used for QR codes, e-mails and metadata. */
   APP_URL: z.string().url(),
   /** ≥ 32 random characters. Used for HMACs (form tokens, IP hashing). Rotate to invalidate. */
@@ -20,7 +21,8 @@ const schema = z.object({
   TURNSTILE_SECRET_KEY: z.string().optional(),
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().optional(),
   CRON_SECRET: z.string().min(16).optional().or(z.literal("")),
-  UPLOAD_DIR: z.string().default("./storage/uploads"),
+  /** One-time token required by the /setup page to create the first administrator (≥ 12 characters). */
+  SETUP_TOKEN: z.string().min(12, "SETUP_TOKEN must be at least 12 characters").optional().or(z.literal("")),
   /** Trust X-Forwarded-For / CF-Connecting-IP (only when behind your own reverse proxy / Cloudflare). */
   TRUST_PROXY: boolish,
   /** Comma separated drand relay URLs (optional override). */

@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrowserVerifier, CheckList, EntryChecker } from "@/components/verify/browser-verifier";
 import { RevealGroup, ScrambleText } from "@/components/verify/winner-reveal";
-import type { Campaign } from "@/generated/prisma/client";
+import type { Campaign } from "@prisma/client";
 
 type Props = { params: Promise<{ campaignId: string }> };
 

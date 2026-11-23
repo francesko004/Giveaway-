@@ -1,9 +1,10 @@
 // Giveaway platform — database schema
 // All timestamps are stored in UTC. Display timezone is configured in SiteSettings.
 
+// "prisma-client-js" (generated into node_modules) is used because it ships a dedicated build for
+// Cloudflare Workers (workerd) next to the Node.js one — the same client runs on a VPS and on Workers.
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -349,6 +350,18 @@ model PageVisit {
 
   @@index([campaignId, createdAt])
   @@index([qrSourceId])
+}
+
+/// Uploaded images (prize images, logo). Stored in the database so the app needs no file system
+/// or object storage — works the same on a VPS and on Cloudflare Workers.
+model Upload {
+  /// Random, unguessable id (also the public file name)
+  id          String   @id
+  contentType String
+  size        Int
+  data        Bytes
+  createdById String?
+  createdAt   DateTime @default(now())
 }
 
 model RateLimit {

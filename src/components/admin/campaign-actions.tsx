@@ -1,6 +1,6 @@
 "use client";
 import { Pause, Play, Rocket, Square, Undo2 } from "lucide-react";
-import type { CampaignStatus } from "@/generated/prisma/enums";
+import type { CampaignStatus } from "@prisma/client";
 import { api } from "./api";
 import { ConfirmAction } from "./confirm-action";
 

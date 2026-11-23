@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Worker name — also the default *.workers.dev subdomain. You can rename it on the deploy page.
+  "name": "megalluksi",
+  // Custom entry: the OpenNext Next.js handler + a Cron Trigger (see worker.ts).
+  "main": "worker.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // Every minute: apply pending DB migrations, close campaigns at their end time, reveal due draws.
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "observability": {
+    "enabled": true
+  },
+  // Non-secret configuration. Secrets (DATABASE_URL, SESSION_SECRET, SETUP_TOKEN) are requested by the
+  // Deploy button from .dev.vars.example, or added with `npx wrangler secret put <NAME>`.
+  "vars": {
+    "APP_URL": "https://megalluksi.win",
+    "TRUST_PROXY": "true",
+    "DISABLE_SCHEDULER": "1",
+    "DRAW_COMMIT_LEAD_SECONDS": "120",
+    "EMAIL_FROM": "MegaLLuksi <noreply@megalluksi.win>"
+  }
+  // Optional: connect your database through Hyperdrive (pooling + lower latency; free tier 100k queries/day).
+  // Create one with `npx wrangler hyperdrive create megalluksi-db --connection-string="postgres://..."`
+  // and uncomment (the app automatically prefers it over DATABASE_URL):
+  // "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<your-hyperdrive-id>" }]
+}

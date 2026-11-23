@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { adminRoute, jsonOk, readJson } from "@/lib/api";
 import { settingsInputSchema } from "@/lib/validation/admin";
 import { writeAudit } from "@/services/audit";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@prisma/client";
 
 export const PATCH = adminRoute("SUPER_ADMIN", async (req, { user, ipHash }) => {
   const input = settingsInputSchema.parse(await readJson(req, 200_000));

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { CampaignStatus, ParticipantStatus } from "@/generated/prisma/enums";
+import type { CampaignStatus, ParticipantStatus } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";

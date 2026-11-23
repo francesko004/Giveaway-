@@ -1,6 +1,8 @@
-# QR Giveaway Platform
+# MegaLLuksi — QR Giveaway Platform
 
-A production-ready, **free-entry** giveaway platform: people scan a QR code, register in under a minute on their phone, and the winner is chosen by a **publicly verifiable** commit-and-reveal draw using the [drand](https://drand.love) randomness beacon.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/francesko004/Giveaway-)
+
+**[megalluksi.win](https://megalluksi.win)** — a production-ready, **free-entry** giveaway platform: people scan a QR code, register in under a minute on their phone, and the winner is chosen by a **publicly verifiable** commit-and-reveal draw using the [drand](https://drand.love) randomness beacon.
 
 - Public site in **Albanian (default) and English**: landing page, server-synchronised countdown, registration, legal pages, data-request form, public draw verification.
 - **Admin dashboard** (`/admin`): campaigns, QR codes & source analytics, participants (search, filters, CSV/Excel export, review), draw console, tamper-evident audit log, privacy requests, users & roles, settings.
@@ -12,6 +14,7 @@ A production-ready, **free-entry** giveaway platform: people scan a QR code, reg
 
 ## Contents
 
+0. [Deploy to Cloudflare Workers (one click)](#deploy-to-cloudflare-workers-one-click)
 1. [Stack](#stack)
 2. [Quick start (development)](#quick-start-development)
 3. [Environment variables](#environment-variables)
@@ -29,6 +32,82 @@ A production-ready, **free-entry** giveaway platform: people scan a QR code, reg
 
 ---
 
+## Deploy to Cloudflare Workers (one click)
+
+### 1. Before you click — create a free PostgreSQL database (2 minutes)
+
+Cloudflare does not host PostgreSQL, so the app connects to one over the internet. The free tier of [Neon](https://neon.tech) is enough:
+
+1. Sign up at **neon.tech** → **Create project** (region: *Europe (Frankfurt)* is closest to Albania).
+2. Open **Connect**, tick **Connection pooling**, and copy the connection string. It looks like
+   `postgresql://user:password@ep-xxxx-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require`
+
+Any PostgreSQL ≥ 14 reachable from the internet works (Supabase, your own server, …).
+
+### 2. Click the button
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/francesko004/Giveaway-)
+
+Cloudflare copies this repository into your GitHub account, builds it and deploys it. On the setup page it asks for three secrets:
+
+| Secret | What to enter |
+|---|---|
+| `DATABASE_URL` | The Neon connection string from step 1 |
+| `SESSION_SECRET` | A random string of at least 32 characters — e.g. `openssl rand -base64 48`, or generate one in a password manager |
+| `SETUP_TOKEN` | Any random password (12+ characters). You need it once, in step 3 |
+
+Leave the build command (`npm run build`) and deploy command (`npm run deploy`) as suggested. The first build takes about 3–5 minutes.
+
+### 3. Create your admin account
+
+Open **`https://<worker-name>.<your-subdomain>.workers.dev/setup`** (the address is shown at the end of the deployment), enter the `SETUP_TOKEN`, your name, e-mail and password. Setup creates the database tables, the MegaLLuksi branding and — if you leave the box ticked — a sample campaign with 4 QR codes. Then sign in at **`/admin`**. The setup page disables itself once an admin exists.
+
+### 4. Connect megalluksi.win
+
+1. Add `megalluksi.win` to your Cloudflare account (**Add a domain**, then change the nameservers at your registrar).
+2. **Workers & Pages → megalluksi → Settings → Domains & Routes → Add → Custom domain →** `megalluksi.win` (and optionally `www.megalluksi.win`).
+3. QR codes, e-mails and share links use `APP_URL`, which is already `https://megalluksi.win` (change it under **Settings → Variables and Secrets** if you use another domain).
+
+Print QR codes only **after** the domain works — they encode `https://megalluksi.win/q/…`.
+
+### 5. Optional extras
+
+| Feature | How |
+|---|---|
+| E-mail (confirmations, winner notices) | Create a [Resend](https://resend.com) API key and verify `megalluksi.win` there, then add the secret `RESEND_API_KEY` and the variable `ADMIN_NOTIFICATION_EMAIL`. `EMAIL_FROM` is preset to `MegaLLuksi <noreply@megalluksi.win>`. |
+| Bot protection | Create a Cloudflare **Turnstile** widget, add `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (variable) and `TURNSTILE_SECRET_KEY` (secret). |
+| Faster database connections | `npx wrangler hyperdrive create megalluksi-db --connection-string="<DATABASE_URL>"`, then uncomment the `hyperdrive` block in `wrangler.jsonc` with the returned id. Free tier: 100 000 queries/day. |
+
+Secrets and variables are edited under **Workers & Pages → megalluksi → Settings → Variables and Secrets**.
+
+### Updates
+
+Every push to the `main`/default branch of your copied repository is built and deployed automatically (Workers Builds). Database migrations are applied by the app itself within a minute (the Cron Trigger runs every minute), so no command-line step is needed.
+
+### Free plan vs. Workers Paid — please read
+
+Cloudflare's **Free** plan allows **10 ms of CPU time per request** (and per cron run). Measured CPU use of this app:
+
+| Operation | CPU time | Free plan (10 ms) |
+|---|---|---|
+| Public pages, registration, QR redirects, verification page | usually a few ms; heavier pages can exceed 10 ms | mostly fine, occasional `Error 1102` possible |
+| **Admin login / creating users** (secure PBKDF2-SHA256 password hashing, 600 000 iterations) | ~110 ms | ❌ will fail |
+| **Draw reveal** (BLS signature verification of the drand beacon) | ~25–40 ms | ❌ will fail (the draw stays pending and is retried) |
+
+So on the Free plan the public site can work, but **admin sign-in and the draw need the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) (US $5/month)**, which allows up to 30 s CPU per request. No code or configuration change is needed when you upgrade. Weakening the password hashing or skipping signature verification to fit into 10 ms would undermine the platform's security and fairness guarantees, so this is intentionally not done. If you prefer a fixed-price server instead, use the Docker deployment below (any €4–5/month VPS).
+
+### What is different on Workers (handled automatically)
+
+- **Database**: Prisma's Workers build with the `pg` driver over TCP; one connection pool per request (Workers cannot share sockets between requests).
+- **Migrations**: bundled into the app (`src/lib/migrations/bundle.ts`) and applied by the cron / `/setup` using Prisma's own `_prisma_migrations` table, so `prisma migrate deploy` stays compatible.
+- **Scheduler**: a Cron Trigger (`worker.ts`, every minute) replaces the Node.js background timer.
+- **Images**: stored in PostgreSQL (no R2 bucket — which would require a payment method) and served with immutable CDN caching.
+- **Known adapter issues**: Next.js 16 `proxy.ts` (security headers / CSP nonce) runs on OpenNext's *experimental* Node middleware support; `scripts/patch-open-next.mjs` fixes a cookie-parsing bug in it during `npm run deploy`. The Postgres driver may log harmless "socket has been closed" messages after requests end.
+
+To deploy from your computer instead of the button: copy `.dev.vars.example` to `.dev.vars`, fill it in, run `npx wrangler login` and `npm run deploy`; add the secrets with `npx wrangler secret put DATABASE_URL` (and the other two). `npm run preview` runs the Workers build locally.
+
+---
+
 ## Stack
 
 | Layer | Technology |
@@ -37,9 +116,10 @@ A production-ready, **free-entry** giveaway platform: people scan a QR code, reg
 | UI | Tailwind CSS 4, shadcn/ui-style components on Radix UI, Lucide icons, Recharts, Sonner |
 | Forms | React Hook Form + Zod (the same schema validates on client and server) |
 | Data | PostgreSQL 16, Prisma 7 (driver adapter `@prisma/adapter-pg`) |
-| Auth | Argon2id password hashing, opaque server-side sessions in HttpOnly cookies, role-based access |
+| Auth | PBKDF2-SHA256 (600k iterations, WebCrypto) password hashing, opaque server-side sessions in HttpOnly cookies, role-based access |
 | Fairness | drand quicknet, `@noble/curves` (BLS12-381), `@noble/hashes` (SHA-256) |
-| Other | `qrcode`, `sharp` (image re-encoding), `exceljs`, Resend (optional e-mail), Cloudflare Turnstile (optional) |
+| Other | `qrcode`, dependency-free image sanitiser and XLSX writer, Resend (optional e-mail), Cloudflare Turnstile (optional) |
+| Hosting | Cloudflare Workers via `@opennextjs/cloudflare` (one-click), or Docker on any VPS |
 | Tests | Vitest (unit + integration against PostgreSQL), Playwright (E2E) |
 | Ops | Docker multi-stage build, Docker Compose, Caddy or Nginx, GitHub Actions CI |
 
@@ -74,7 +154,7 @@ See [`.env.example`](.env.example) for the full annotated list. All variables ar
 | `CRON_SECRET`, `DISABLE_SCHEDULER` | optional | External scheduler instead of the built-in 30 s tick |
 | `DRAW_COMMIT_LEAD_SECONDS` | optional | Gap between commitment and committed round (default 120, min 60) |
 | `DRAND_URLS` | optional | Override drand relays |
-| `UPLOAD_DIR` | optional | Where uploaded images are stored (outside the web root) |
+| `SETUP_TOKEN` | for `/setup` | One-time password for the first-run page that creates the first admin |
 
 Secrets are only read on the server; nothing except `NEXT_PUBLIC_TURNSTILE_SITE_KEY` reaches the browser.
 
@@ -154,13 +234,13 @@ Invalidation: a SUPER_ADMIN can publicly invalidate a draw with a reason (e.g. s
 
 ## Security
 
-- **Authentication**: Argon2id (19 MiB, t=2), constant-time handling of unknown users, account lockout after 5 failures (15 min), IP rate limiting, opaque 256-bit session tokens stored only as SHA-256 hashes, HttpOnly + SameSite=Lax cookies (`__Host-` + Secure on HTTPS), sliding expiry, sessions revoked on password/role/deactivation changes.
+- **Authentication**: PBKDF2-HMAC-SHA256 with 600 000 iterations (OWASP recommendation; portable WebCrypto, runs on Workers), legacy Argon2id hashes still verified and upgraded on login, constant-time handling of unknown users, account lockout after 5 failures (15 min), IP rate limiting, opaque 256-bit session tokens stored only as SHA-256 hashes, HttpOnly + SameSite=Lax cookies (`__Host-` + Secure on HTTPS), sliding expiry, sessions revoked on password/role/deactivation changes.
 - **Authorization**: every admin page checks the session server-side (`requireAdminPage`), every admin API is wrapped by `adminRoute(minRole, …)`; `proxy.ts` only does an optimistic redirect.
 - **CSRF**: Origin/Referer must match the app on every state-changing request; JSON-only bodies; SameSite cookies.
 - **Bot & abuse protection**: honeypot field, HMAC-signed time-stamped form token (blocks blind POSTs, replays and instant submissions), PostgreSQL-backed rate limits (burst + hourly per IP hash), optional Cloudflare Turnstile, automatic flagging (disposable domains, many entries per network), duplicate detection with e-mail canonicalisation (Gmail dots, `+tags`) and E.164 phone normalisation.
 - **Injection/XSS**: Prisma parameterised queries only; React escaping; admin-edited legal text rendered by a safe Markdown subset (no raw HTML); strict nonce-based CSP with `strict-dynamic`, `frame-ancestors 'none'`, `object-src 'none'`; CSV/XLSX formula-injection protection.
 - **Headers**: HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP; `noindex` + `no-store` on admin.
-- **Uploads**: size-limited, decoded and **re-encoded** by sharp (only JPEG/PNG/WebP/AVIF accepted; EXIF/GPS stripped), random file names, stored outside the web root, served with `nosniff` and a sandbox CSP.
+- **Uploads**: resized and re-encoded to WebP in the admin's browser; on the server the real type is detected from the bytes (only JPEG/PNG/WebP), EXIF/GPS/XMP/text metadata is stripped, files get random names, are stored in the database and served with `nosniff` and a sandbox CSP.
 - **Privacy by design**: no raw IPs stored (keyed HMAC only), cookieless analytics, query strings removed from referrers, no PII in logs, the public proof contains no personal data.
 - **Errors**: internal errors are logged server-side and returned as generic messages.
 - **Audit**: append-only, hash-chained audit log (each record hashes the previous one); the Audit page verifies the chain and shows where it breaks if someone tampers with the database directly.
@@ -174,8 +254,8 @@ curl -fsSL https://get.docker.com | sh
 sudo ufw allow OpenSSH && sudo ufw allow 80,443/tcp && sudo ufw enable
 
 # 2. Code + configuration
-sudo mkdir -p /opt/giveaway && sudo chown $USER /opt/giveaway
-git clone <your-repo-url> /opt/giveaway && cd /opt/giveaway
+sudo mkdir -p /opt/megalluksi && sudo chown $USER /opt/megalluksi
+git clone <your-repo-url> /opt/megalluksi && cd /opt/megalluksi
 cp .env.example .env && nano .env        # APP_URL, SESSION_SECRET, POSTGRES_PASSWORD, DOMAIN, …
 
 # 3. Build and start (migrations run automatically in the one-shot "migrate" service)
@@ -200,9 +280,9 @@ No URL is hard-coded: everything public is built from `APP_URL`.
 ## Backups & restore
 
 ```bash
-./scripts/backup.sh                  # pg_dump (custom format) + uploads tarball + SHA256SUMS in ./backups
-# cron (daily 03:17 UTC):  17 3 * * * cd /opt/giveaway && ./scripts/backup.sh >> backups/backup.log 2>&1
-./scripts/restore.sh backups/db-<stamp>.dump backups/uploads-<stamp>.tar.gz
+./scripts/backup.sh                  # pg_dump (custom format, includes uploaded images) + SHA256SUMS in ./backups
+# cron (daily 03:17 UTC):  17 3 * * * cd /opt/megalluksi && ./scripts/backup.sh >> backups/backup.log 2>&1
+./scripts/restore.sh backups/db-<stamp>.dump
 ```
 
 Strategy: daily dumps kept 30 days on the server (`KEEP_DAYS`), **copied off-site** (e.g. `rclone copy backups remote:giveaway-backups` to S3/B2 with versioning), and a periodic test restore into a scratch database. After a restore, open **Admin → Audit log** to confirm the hash chain is intact. Draw proofs remain independently verifiable from the published data even if the server is lost.
@@ -255,7 +335,8 @@ src/
   lib/
     fairness/    isomorphic engine: snapshot, drand, selection, verification
     auth/ security/ validation/ email/ i18n/
-    env.ts db.ts api.ts uploads.ts time.ts csv.ts
+    migrations/  bundled SQL migrations + in-app migrator (Cloudflare Workers, /setup)
+    env.ts db.ts api.ts uploads.ts image.ts xlsx.ts time.ts csv.ts
   services/      campaigns, participants, draws, qr, analytics, audit, settings, scheduler
   content/       legal templates
   proxy.ts       CSP nonce + optimistic admin redirect

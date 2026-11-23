@@ -7,7 +7,7 @@
  * so it does not end up in shell history).
  */
 import { createInterface } from "node:readline/promises";
-import { hash } from "@node-rs/argon2";
+import { hashPassword } from "../src/lib/auth/hash";
 import { prisma } from "./db";
 
 function arg(name: string) {
@@ -31,7 +31,7 @@ async function main() {
   if (!["SUPER_ADMIN", "ADMIN", "VIEWER"].includes(role)) throw new Error("Invalid --role");
   const password = await readPassword();
   if (password.length < 12 || !/[a-z]/i.test(password) || !/\d/.test(password)) throw new Error("Password must be ≥ 12 characters with letters and numbers");
-  const passwordHash = await hash(password, { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 });
+  const passwordHash = await hashPassword(password);
   const user = await prisma.user.upsert({
     where: { email },
     update: { passwordHash, role, active: true, failedLogins: 0, lockedUntil: null },

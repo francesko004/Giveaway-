@@ -8,7 +8,7 @@ export const POST = adminRoute("ADMIN", async (req, { user, ipHash }) => {
   const form = await req.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return jsonError("NO_FILE", "No file uploaded", 422);
-  const url = await saveImage(await file.arrayBuffer());
+  const url = await saveImage(await file.arrayBuffer(), user.id);
   await audit({ userId: user.id, action: "upload.created", entityType: "Upload", entityId: url, ipHash });
   return jsonOk({ url }, { status: 201 });
 });

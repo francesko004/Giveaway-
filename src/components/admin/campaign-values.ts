@@ -1,7 +1,8 @@
-import type { Campaign } from "@/generated/prisma/client";
+import type { Campaign } from "@prisma/client";
 import { utcToZonedLocal } from "@/lib/time";
 import { parseCampaignSettings, campaignTranslationsSchema } from "@/lib/validation/campaign-settings";
 import type { CampaignFormValues } from "./campaign-form";
+import { BRAND } from "@/content/brand";
 
 export function toFormValues(c: Campaign, tz: string): CampaignFormValues {
   const t = campaignTranslationsSchema.safeParse(c.translations);
@@ -47,7 +48,7 @@ export function emptyFormValues(tz: string): CampaignFormValues {
     winnerCount: 1,
     alternateCount: 2,
     showParticipantCount: false,
-    referencePrefix: "GIVE",
+    referencePrefix: BRAND.referencePrefix,
     settings: { cityField: "optional", minAge: 18, allowedPhoneCountries: [], maxEntriesPerIp: 5, sendConfirmationEmail: true },
     translations: { en: {} },
   };

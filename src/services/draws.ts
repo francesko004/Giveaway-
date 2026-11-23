@@ -20,7 +20,7 @@ import {
   type DrawProof,
   type FetchLike,
 } from "@/lib/fairness";
-import type { Draw, DrawResult } from "@/generated/prisma/client";
+import type { Draw, DrawResult } from "@prisma/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { writeAudit } from "./audit";
 import { isClosedForEntries } from "./campaign-status";

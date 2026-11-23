@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import type { Campaign } from "@/generated/prisma/client";
+import type { Campaign } from "@prisma/client";
 import { getDictionary, getNonce } from "@/lib/i18n/server";
 import { getSettings } from "@/services/settings";
 import { localizeCampaign } from "@/services/campaigns";

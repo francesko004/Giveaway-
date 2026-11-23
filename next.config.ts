@@ -14,12 +14,13 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   agentRules: false,
-  serverExternalPackages: ["@node-rs/argon2", "sharp", "exceljs"],
+  // Keep Prisma external so OpenNext can bundle its Cloudflare Workers (workerd) build.
+  serverExternalPackages: ["@prisma/client", ".prisma/client"],
   images: {
-    formats: ["image/avif", "image/webp"],
-    localPatterns: [{ pathname: "/api/uploads/**" }, { pathname: "/images/**" }],
-    remotePatterns: [{ protocol: "https", hostname: "**" }],
-    minimumCacheTTL: 86400,
+    // Images are already resized/re-encoded to WebP when uploaded and served with immutable caching
+    // (cached by Cloudflare's CDN), so runtime optimisation is unnecessary. This also keeps the app
+    // portable: Cloudflare Workers has no built-in Next.js image optimiser on the free plan.
+    unoptimized: true,
   },
   async headers() {
     return [

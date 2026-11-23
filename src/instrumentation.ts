@@ -6,6 +6,8 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (process.env.DISABLE_SCHEDULER === "1" || process.env.NODE_ENV === "test") return;
+  // Cloudflare Workers cannot run background timers — the Cron Trigger in worker.ts is used instead.
+  if (typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers") return;
   const { runTick } = await import("./services/scheduler");
   let running = false;
   const tick = async () => {

@@ -6,7 +6,7 @@ import { AppError, isUniqueViolation } from "@/lib/errors";
 import { randomCode } from "@/lib/security/crypto";
 import { visitorHash } from "@/lib/security/request";
 import type { SessionUser } from "@/lib/auth/session";
-import type { SourceType } from "@/generated/prisma/enums";
+import type { SourceType } from "@prisma/client";
 import { writeAudit } from "./audit";
 import { getSettings } from "./settings";
 

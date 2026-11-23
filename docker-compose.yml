@@ -1,16 +1,16 @@
 # Production stack: PostgreSQL + one-shot migrations + the app (+ optional Caddy for TLS).
 #   cp .env.example .env   # then edit
 #   docker compose up -d --build
-#   docker compose run --rm migrate npm run admin:create -- --email you@company.al --name "You"
-name: giveaway
+#   docker compose run --rm -it migrate npm run admin:create -- --email you@megalluksi.win --name "You"
+name: megalluksi
 
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-giveaway}
-      POSTGRES_USER: ${POSTGRES_USER:-giveaway}
+      POSTGRES_DB: ${POSTGRES_DB:-megalluksi}
+      POSTGRES_USER: ${POSTGRES_USER:-megalluksi}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -25,7 +25,7 @@ services:
     build: { context: ., target: migrate }
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-giveaway}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-giveaway}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-megalluksi}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-megalluksi}
     depends_on:
       db: { condition: service_healthy }
     restart: "no"
@@ -35,10 +35,8 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-giveaway}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-giveaway}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-megalluksi}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-megalluksi}
       TRUST_PROXY: "true"
-    volumes:
-      - uploads:/app/storage/uploads
     depends_on:
       db: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
@@ -60,5 +58,4 @@ services:
 
 volumes:
   pgdata:
-  uploads:
   caddy_data:

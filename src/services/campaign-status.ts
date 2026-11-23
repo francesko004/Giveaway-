@@ -1,4 +1,4 @@
-import type { CampaignStatus } from "@/generated/prisma/enums";
+import type { CampaignStatus } from "@prisma/client";
 
 export interface StatusInput {
   status: CampaignStatus;

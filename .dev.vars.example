@@ -1,0 +1,4 @@
+# Secrets requested by the "Deploy to Cloudflare" button (and used by `npm run preview` when copied to .dev.vars).
+DATABASE_URL=postgresql://user:password@your-host/dbname?sslmode=require
+SESSION_SECRET=replace-with-64-random-characters
+SETUP_TOKEN=replace-with-a-one-time-setup-password

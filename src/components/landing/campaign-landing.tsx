@@ -17,7 +17,7 @@ import {
   Users,
   Waves,
 } from "lucide-react";
-import type { Campaign, SiteSettings } from "@/generated/prisma/client";
+import type { Campaign, SiteSettings } from "@prisma/client";
 import type { Dictionary, Locale } from "@/lib/i18n/dictionaries";
 import { formatDateTime, startOfDayInZone } from "@/lib/time";
 import { appUrl, env, turnstileEnabled } from "@/lib/env";

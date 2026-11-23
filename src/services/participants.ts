@@ -14,7 +14,7 @@ import { formatDateTime } from "@/lib/time";
 import { canonicalEmail, isDisposableEmail, normalizeEmail } from "@/lib/validation/email";
 import { registrationRequestSchema } from "@/lib/validation/registration";
 import { parseCampaignSettings } from "@/lib/validation/campaign-settings";
-import type { Prisma, ParticipantStatus } from "@/generated/prisma/client";
+import type { Prisma, ParticipantStatus } from "@prisma/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { writeAudit } from "./audit";
 import { effectiveStatus } from "./campaign-status";

@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { randomToken, sha256 } from "@/lib/security/crypto";
-import type { Role, User } from "@/generated/prisma/client";
+import type { Role, User } from "@prisma/client";
 
 export const ROLE_RANK: Record<Role, number> = { VIEWER: 1, ADMIN: 2, SUPER_ADMIN: 3 };
 

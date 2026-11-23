@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import type { Role } from "@/generated/prisma/client";
+import type { Role } from "@prisma/client";
 import { hasRole, resolveSession, sessionCookieName, type SessionUser } from "./session";
 
 /** For server components / layouts. */

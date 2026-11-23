@@ -2,7 +2,7 @@ import "server-only";
 import { prisma, type Db } from "@/lib/db";
 import { sha256 } from "@/lib/security/crypto";
 import { stableStringify } from "@/lib/stable-json";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@prisma/client";
 
 export const GENESIS_HASH = "0".repeat(64);
 

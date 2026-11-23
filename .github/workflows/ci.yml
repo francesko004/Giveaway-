@@ -31,5 +31,7 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # Cloudflare Workers bundle must keep building (Deploy to Cloudflare button)
+      - run: npx opennextjs-cloudflare build --skipNextBuild && node scripts/patch-open-next.mjs
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
