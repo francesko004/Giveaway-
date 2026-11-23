@@ -1,15 +1,25 @@
 /**
  * Portable password hashing (Node.js, Cloudflare Workers and browsers — no native modules).
  *
- * New hashes: PBKDF2-HMAC-SHA256 via WebCrypto, 600 000 iterations (OWASP 2023 recommendation),
- * 16-byte random salt, 32-byte key. Format: $pbkdf2-sha256$i=<iterations>$<salt b64>$<hash b64>
+ * Current scheme — chained PBKDF2-HMAC-SHA256, 600 000 iterations in total (OWASP 2023 recommendation):
+ *   k₀ = password;  kᵢ = PBKDF2-SHA256(kᵢ₋₁, salt, ≤ 100 000 iterations, 32 bytes)
+ * Cloudflare Workers' WebCrypto refuses more than 100 000 PBKDF2 iterations per call, so the work is
+ * split into rounds of at most 100 000. Feeding each output into the next round keeps the total cost
+ * (and therefore brute-force resistance) equal to one 600 000-iteration run, and stays fully native/fast.
+ * Format: $pbkdf2c-sha256$i=<total>$<salt b64>$<hash b64>
  *
- * Legacy Argon2id PHC hashes ($argon2id$v=19$m=…,t=…,p=…$salt$hash) are still verified (pure JS)
- * and transparently upgraded on the next successful login.
+ * Still verified (and upgraded on the next successful login):
+ *  - $pbkdf2-sha256$…  single-call PBKDF2 (falls back to a pure-JS implementation where WebCrypto
+ *    rejects the iteration count, e.g. on Workers),
+ *  - $argon2id$…       legacy Argon2id PHC hashes (pure JS).
  */
 import { argon2id } from "@noble/hashes/argon2.js";
+import { pbkdf2 as pbkdf2Js } from "@noble/hashes/pbkdf2.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 export const PBKDF2_ITERATIONS = 600_000;
+/** Maximum iterations Cloudflare Workers' WebCrypto accepts in a single PBKDF2 call. */
+export const PBKDF2_MAX_PER_CALL = 100_000;
 const enc = new TextEncoder();
 
 const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/=+$/, "");
@@ -26,25 +36,44 @@ function constantTimeEqual(a: Uint8Array, b: Uint8Array) {
   return diff === 0;
 }
 
-async function pbkdf2(password: string, salt: Uint8Array, iterations: number) {
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+async function pbkdf2(secret: Uint8Array, salt: Uint8Array, iterations: number) {
+  const key = await crypto.subtle.importKey("raw", secret as BufferSource, "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: salt as BufferSource, iterations }, key, 256);
   return new Uint8Array(bits);
 }
 
+/** Chained PBKDF2: total `iterations` split into WebCrypto-friendly rounds of ≤ 100 000. */
+async function pbkdf2Chained(password: string, salt: Uint8Array, iterations: number) {
+  let key: Uint8Array = enc.encode(password);
+  for (let left = iterations; left > 0; left -= PBKDF2_MAX_PER_CALL) {
+    key = await pbkdf2(key, salt, Math.min(left, PBKDF2_MAX_PER_CALL));
+  }
+  return key;
+}
+
+/** Single-call PBKDF2 (legacy format). Uses WebCrypto, or pure JS if the runtime rejects the count. */
+async function pbkdf2Single(password: string, salt: Uint8Array, iterations: number) {
+  try {
+    return await pbkdf2(enc.encode(password), salt, iterations);
+  } catch {
+    return pbkdf2Js(sha256, enc.encode(password), salt, { c: iterations, dkLen: 32 });
+  }
+}
+
 export async function hashPassword(password: string, iterations = PBKDF2_ITERATIONS): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  return ["", "pbkdf2-sha256", `i=${iterations}`, b64(salt), b64(await pbkdf2(password, salt, iterations))].join("$");
+  return ["", "pbkdf2c-sha256", `i=${iterations}`, b64(salt), b64(await pbkdf2Chained(password, salt, iterations))].join("$");
 }
 
 export async function verifyPassword(stored: string, password: string): Promise<boolean> {
   try {
     const parts = stored.split("$");
-    if (parts[1] === "pbkdf2-sha256") {
-      const [, , params, salt, hash] = parts;
+    if (parts[1] === "pbkdf2c-sha256" || parts[1] === "pbkdf2-sha256") {
+      const [, scheme, params, salt, hash] = parts;
       const iterations = Number(params.replace("i=", ""));
       if (!Number.isInteger(iterations) || iterations < 10_000 || iterations > 10_000_000) return false;
-      return constantTimeEqual(await pbkdf2(password, unb64(salt), iterations), unb64(hash));
+      const derive = scheme === "pbkdf2c-sha256" ? pbkdf2Chained : pbkdf2Single;
+      return constantTimeEqual(await derive(password, unb64(salt), iterations), unb64(hash));
     }
     if (parts[1] === "argon2id") {
       const [, , , params, salt, hash] = parts;
@@ -62,7 +91,7 @@ export async function verifyPassword(stored: string, password: string): Promise<
 /** True when the stored hash should be replaced with the current scheme/parameters. */
 export function needsRehash(stored: string): boolean {
   const parts = stored.split("$");
-  if (parts[1] !== "pbkdf2-sha256") return true;
+  if (parts[1] !== "pbkdf2c-sha256") return true;
   return Number(parts[2]?.replace("i=", "")) < PBKDF2_ITERATIONS;
 }
 

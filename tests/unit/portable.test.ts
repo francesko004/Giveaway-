@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import ExcelJS from "exceljs";
 import { argon2id } from "@noble/hashes/argon2.js";
 import { hashPassword, needsRehash, verifyPassword } from "@/lib/auth/hash";
@@ -6,9 +6,17 @@ import { detectImageFormat, sanitizeImage } from "@/lib/image";
 import { toXlsx } from "@/lib/xlsx";
 
 describe("portable password hashing (Node + Workers)", () => {
-  it("hashes with PBKDF2-SHA256 at 600k iterations and verifies", async () => {
+  it("hashes with chained PBKDF2-SHA256 (600k total, ≤100k per WebCrypto call — the Workers limit) and verifies", async () => {
+    const calls: number[] = [];
+    const orig = crypto.subtle.deriveBits.bind(crypto.subtle);
+    const spy = vi.spyOn(crypto.subtle, "deriveBits").mockImplementation(async (alg, key, len) => {
+      calls.push((alg as Pbkdf2Params).iterations);
+      return orig(alg, key, len);
+    });
     const h = await hashPassword("correct horse battery 9");
-    expect(h).toMatch(/^\$pbkdf2-sha256\$i=600000\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$/);
+    spy.mockRestore();
+    expect(calls).toEqual([100_000, 100_000, 100_000, 100_000, 100_000, 100_000]);
+    expect(h).toMatch(/^\$pbkdf2c-sha256\$i=600000\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$/);
     expect(await verifyPassword(h, "correct horse battery 9")).toBe(true);
     expect(await verifyPassword(h, "correct horse battery 8")).toBe(false);
     expect(needsRehash(h)).toBe(false);
@@ -26,6 +34,26 @@ describe("portable password hashing (Node + Workers)", () => {
     expect(await verifyPassword(phc, "legacy-password-1")).toBe(true);
     expect(await verifyPassword(phc, "legacy-password-2")).toBe(false);
     expect(needsRehash(phc)).toBe(true);
+  });
+
+  it("verifies older single-call PBKDF2 hashes even where WebCrypto rejects >100k iterations, and flags them for upgrade", async () => {
+    const { pbkdf2 } = await import("@noble/hashes/pbkdf2.js");
+    const { sha256 } = await import("@noble/hashes/sha2.js");
+    const salt = new Uint8Array(16).fill(3);
+    const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64").replace(/=+$/, "");
+    const legacy = ["", "pbkdf2-sha256", "i=600000", b64(salt), b64(pbkdf2(sha256, "old-password-12", salt, { c: 600_000, dkLen: 32 }))].join("$");
+    expect(await verifyPassword(legacy, "old-password-12")).toBe(true);
+    // Simulate Cloudflare Workers: WebCrypto refuses more than 100 000 iterations per call.
+    const orig = crypto.subtle.deriveBits.bind(crypto.subtle);
+    const spy = vi.spyOn(crypto.subtle, "deriveBits").mockImplementation(async (alg, key, len) => {
+      if ((alg as Pbkdf2Params).iterations > 100_000) throw new Error("Pbkdf2 failed: iteration counts above 100000 are not supported");
+      return orig(alg, key, len);
+    });
+    expect(await verifyPassword(legacy, "old-password-12")).toBe(true);
+    expect(await verifyPassword(legacy, "wrong-password-12")).toBe(false);
+    expect(await verifyPassword(await hashPassword("new-password-12"), "new-password-12")).toBe(true);
+    spy.mockRestore();
+    expect(needsRehash(legacy)).toBe(true);
   });
 
   it("rejects malformed hashes and absurd parameters", async () => {

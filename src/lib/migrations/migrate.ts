@@ -25,8 +25,18 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
   "applied_steps_count" INTEGER NOT NULL DEFAULT 0
 )`;
 
-export async function pendingMigrations(connectionString: string): Promise<string[]> {
+/**
+ * A standalone pg client. On Cloudflare Workers the socket reports its own closing as an "error" event;
+ * without a listener that becomes an uncaught exception ("This socket has been closed").
+ */
+function newClient(connectionString: string) {
   const client = new Client({ connectionString });
+  client.on("error", () => {});
+  return client;
+}
+
+export async function pendingMigrations(connectionString: string): Promise<string[]> {
+  const client = newClient(connectionString);
   await client.connect();
   try {
     const exists = await client.query(`SELECT to_regclass('"_prisma_migrations"') AS t`);
@@ -40,7 +50,7 @@ export async function pendingMigrations(connectionString: string): Promise<strin
 }
 
 export async function applyMigrations(connectionString: string): Promise<MigrationResult> {
-  const client = new Client({ connectionString });
+  const client = newClient(connectionString);
   await client.connect();
   const applied: string[] = [];
   try {
