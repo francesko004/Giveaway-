@@ -1,0 +1,423 @@
+// Giveaway platform — database schema
+// All timestamps are stored in UTC. Display timezone is configured in SiteSettings.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// Administration & authentication
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN // full access incl. user management and exceptional overrides
+  ADMIN // campaign, participant, QR and draw management
+  VIEWER // read-only dashboard access
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String
+  email          String    @unique
+  passwordHash   String
+  role           Role      @default(ADMIN)
+  active         Boolean   @default(true)
+  failedLogins   Int       @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sessions       Session[]
+  auditLogs      AuditLog[]
+  invalidations  Participant[] @relation("InvalidatedBy")
+  dataRequests   DataRequest[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  /// SHA-256 of the opaque session token; the raw token only lives in the HttpOnly cookie.
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  ipHash     String?
+  userAgent  String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Campaigns
+// ─────────────────────────────────────────────────────────────
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  CLOSED
+  DRAW_COMPLETED
+}
+
+model Campaign {
+  id                   String         @id @default(cuid())
+  title                String
+  slug                 String         @unique
+  description          String
+  prizeName            String
+  prizeDescription     String
+  prizeImage           String?
+  prizeValue           String?
+  /// Optional English (or other locale) overrides: { "en": { "title": "...", ... } }
+  translations         Json           @default("{}")
+  eligibility          String         @default("")
+  status               CampaignStatus @default(DRAFT)
+  startsAt             DateTime
+  endsAt               DateTime
+  drawAt               DateTime
+  /// Set when registrations are closed manually before endsAt.
+  closedAt             DateTime?
+  /// Set when the eligible entry list is frozen (draw commitment). Inserts are blocked by a DB trigger afterwards.
+  lockedAt             DateTime?
+  winnerCount          Int            @default(1)
+  alternateCount       Int            @default(2)
+  showParticipantCount Boolean        @default(false)
+  referencePrefix      String         @default("GIVE")
+  /// Registration field configuration and eligibility rules (validated by zod: campaignSettingsSchema).
+  settings             Json           @default("{}")
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  participants         Participant[]
+  qrSources            QRSource[]
+  draws                Draw[]
+  auditLogs            AuditLog[]
+  visits               PageVisit[]
+
+  @@index([status])
+  @@index([endsAt])
+}
+
+enum SourceType {
+  LOCATION
+  POSTER
+  SOCIAL
+  PARTNER
+  EVENT
+  OTHER
+}
+
+model QRSource {
+  id          String     @id @default(cuid())
+  campaignId  String
+  campaign    Campaign   @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  name        String
+  /// Value of the ?src= parameter (unique per campaign).
+  slug        String
+  /// Stable short code used in the printed QR URL: /q/{code}. Never changes.
+  code        String     @unique
+  type        SourceType @default(OTHER)
+  /// Same-origin path the stable QR URL redirects to. Changing it does not require reprinting.
+  destination String
+  active      Boolean    @default(true)
+  notes       String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  participants Participant[]
+  visits       PageVisit[]
+
+  @@unique([campaignId, slug])
+  @@index([campaignId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Participants & consent
+// ─────────────────────────────────────────────────────────────
+
+enum ParticipantStatus {
+  ELIGIBLE
+  FLAGGED // suspicious — must be reviewed before the entry list can be frozen
+  INVALID
+}
+
+model Participant {
+  id                String            @id @default(cuid())
+  campaignId        String
+  campaign          Campaign          @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  fullName          String
+  email             String
+  /// Canonical form used for duplicate detection (lower-cased, provider aliases removed).
+  emailCanonical    String
+  /// E.164 formatted phone number. Nullable only so that erasure requests can be honoured.
+  phone             String?
+  city              String?
+  /// Public, non-guessable participation reference, e.g. GIVE-2026-7K3M9QX2
+  referenceNumber   String            @unique
+  qrSourceId        String?
+  qrSource          QRSource?         @relation(fields: [qrSourceId], references: [id], onDelete: SetNull)
+  marketingConsent  Boolean           @default(false)
+  termsVersion      String
+  privacyVersion    String
+  locale            String            @default("sq")
+  registeredAt      DateTime          @default(now())
+  status            ParticipantStatus @default(ELIGIBLE)
+  statusReason      String?
+  statusChangedAt   DateTime?
+  invalidatedById   String?
+  invalidatedBy     User?             @relation("InvalidatedBy", fields: [invalidatedById], references: [id], onDelete: SetNull)
+  /// Reasons the automatic checks flagged this entry (array of strings).
+  flags             Json              @default("[]")
+  referrer          String?
+  utmSource         String?
+  utmMedium         String?
+  utmCampaign       String?
+  utmTerm           String?
+  utmContent        String?
+  /// Salted HMAC of the client IP — used only for abuse detection, never the raw IP.
+  ipHash            String?
+  anonymizedAt      DateTime?
+
+  consents          ConsentRecord[]
+  drawResults       DrawResult[]
+
+  @@unique([campaignId, emailCanonical])
+  @@unique([campaignId, phone])
+  @@index([campaignId, status])
+  @@index([campaignId, registeredAt])
+  @@index([qrSourceId])
+  @@index([email])
+  @@index([phone])
+  @@index([ipHash])
+}
+
+enum ConsentType {
+  TERMS
+  PRIVACY
+  MARKETING
+  AGE
+}
+
+model ConsentRecord {
+  id            String      @id @default(cuid())
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  consentType   ConsentType
+  accepted      Boolean
+  policyVersion String
+  acceptedAt    DateTime    @default(now())
+
+  @@index([participantId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Fairness engine
+// ─────────────────────────────────────────────────────────────
+
+enum DrawStatus {
+  COMMITTED // snapshot frozen + future drand round published, randomness not yet used
+  COMPLETED // randomness verified, winners computed
+  INVALIDATED // publicly cancelled with a reason; proof preserved
+}
+
+model Draw {
+  id                 String     @id @default(cuid())
+  campaignId         String
+  campaign           Campaign   @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  /// 1 for the first draw of a campaign, incremented for each linked re-draw.
+  sequence           Int
+  status             DrawStatus @default(COMMITTED)
+  algorithmVersion   String
+  // Commitment (immutable once inserted — enforced by trigger)
+  snapshotHash       String
+  /// Canonical snapshot text (contains only opaque entry hashes, never personal data).
+  snapshot           String
+  entryCount         Int
+  winnerCount        Int
+  alternateCount     Int
+  commitmentAt       DateTime
+  drandNetwork       String
+  drandChainHash     String
+  drandPublicKey     String
+  drandScheme        String
+  drandPeriod        Int
+  drandGenesis       Int
+  drandRound         Int
+  /// Time at which the committed round is produced (must be after commitmentAt).
+  drandRoundAt       DateTime
+  // Reveal (written exactly once when the beacon is retrieved & verified)
+  randomness         String?
+  signature          String?
+  beaconFetchedAt    DateTime?
+  winningEntryId     String?
+  completedAt        DateTime?
+  lastAttemptAt      DateTime?
+  attemptCount       Int        @default(0)
+  lastError          String?
+  // Invalidation (public)
+  invalidatedAt      DateTime?
+  invalidationReason String?
+  supersedesId       String?    @unique
+  supersedes         Draw?      @relation("DrawChain", fields: [supersedesId], references: [id], onDelete: Restrict)
+  supersededBy       Draw?      @relation("DrawChain")
+  createdById        String?
+  createdAt          DateTime   @default(now())
+
+  results            DrawResult[]
+
+  @@unique([campaignId, sequence])
+  @@index([campaignId, status])
+}
+
+enum DrawResultRole {
+  WINNER
+  ALTERNATE
+}
+
+model DrawResult {
+  id                     String         @id @default(cuid())
+  drawId                 String
+  draw                   Draw           @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  /// 0-based pick order produced by the algorithm.
+  position               Int
+  role                   DrawResultRole
+  /// Index into the sorted snapshot at the time of the pick (before removal).
+  snapshotIndex          Int
+  entryHash              String
+  participantId          String
+  participant            Participant    @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  referenceNumber        String
+  disqualifiedAt         DateTime?
+  disqualificationReason String?
+  notifiedAt             DateTime?
+  createdAt              DateTime       @default(now())
+
+  @@unique([drawId, position])
+  @@index([participantId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Audit, analytics, settings, privacy
+// ─────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  /// Monotonic sequence used for the tamper-evident hash chain.
+  seq        Int       @unique @default(autoincrement())
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json      @default("{}")
+  ipHash     String?
+  prevHash   String
+  hash       String    @unique
+  createdAt  DateTime  @default(now())
+
+  @@index([campaignId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+enum VisitKind {
+  SCAN // hit on the stable QR redirect /q/{code}
+  LANDING // landing page view
+}
+
+model PageVisit {
+  id          String    @id @default(cuid())
+  campaignId  String
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  qrSourceId  String?
+  qrSource    QRSource? @relation(fields: [qrSourceId], references: [id], onDelete: SetNull)
+  kind        VisitKind
+  /// Daily-rotating salted hash (no cookies, no raw IP) used to count unique visitors.
+  visitorHash String
+  createdAt   DateTime  @default(now())
+
+  @@index([campaignId, createdAt])
+  @@index([qrSourceId])
+}
+
+model RateLimit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}
+
+model SiteSettings {
+  id                   Int      @id @default(1)
+  companyName          String   @default("Kompania Juaj")
+  companyLegalName     String   @default("")
+  companyNipt          String   @default("")
+  logoUrl              String?
+  contactEmail         String   @default("")
+  contactPhone         String   @default("")
+  address              String   @default("")
+  /// { facebook, instagram, tiktok, website }
+  socialLinks          Json     @default("{}")
+  defaultLocale        String   @default("sq")
+  timezone             String   @default("Europe/Tirane")
+  featuredCampaignId   String?
+  /// Max registrations per IP per hour (abuse throttling).
+  registrationsPerIpPerHour Int @default(10)
+  minFormFillSeconds   Int      @default(3)
+  sendConfirmationEmail Boolean @default(true)
+  analyticsEnabled     Boolean  @default(true)
+  publishSnapshot      Boolean  @default(true)
+  retentionDays        Int      @default(365)
+  sessionTtlHours      Int      @default(12)
+  termsVersion         String   @default("1.0")
+  privacyVersion       String   @default("1.0")
+  /// { sq: "markdown", en: "markdown" }
+  termsContent         Json     @default("{}")
+  privacyContent       Json     @default("{}")
+  updatedAt            DateTime @updatedAt
+}
+
+enum DataRequestType {
+  ACCESS
+  DELETION
+  RECTIFICATION
+  MARKETING_OPT_OUT
+}
+
+enum DataRequestStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+model DataRequest {
+  id           String            @id @default(cuid())
+  type         DataRequestType
+  status       DataRequestStatus @default(PENDING)
+  fullName     String
+  email        String
+  phone        String?
+  message      String?
+  resolution   String?
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?             @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+  ipHash       String?
+  createdAt    DateTime          @default(now())
+
+  @@index([status])
+  @@index([email])
+}
